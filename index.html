@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Super Pamięć</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #eef1f6;
+      color: #222;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+    }
+
+    h1 { margin: 0 0 16px; }
+
+    .toolbar {
+      width: 600px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      font-size: 20px;
+    }
+
+    button.action {
+      font: inherit;
+      font-size: 16px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #3b5bdb;
+      color: #fff;
+      cursor: pointer;
+    }
+    button.action:hover { background: #2f4ac0; }
+
+    .board-wrap { position: relative; }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(6, 90px);
+      grid-template-rows: repeat(5, 90px);
+      gap: 12px;
+    }
+
+    .card {
+      padding: 0;
+      border: none;
+      background: none;
+      cursor: pointer;
+      perspective: 600px;
+    }
+
+    .card-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.3s;
+      transform-style: preserve-3d;
+    }
+    .card.revealed .card-inner,
+    .card.matched .card-inner { transform: rotateY(180deg); }
+
+    .card-face {
+      position: absolute;
+      inset: 0;
+      border-radius: 10px;
+      backface-visibility: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 44px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    }
+    .card-back { background: #3b5bdb; }
+    .card-front {
+      background: #fff;
+      transform: rotateY(180deg);
+    }
+    .card.matched .card-front {
+      background: #d3f9d8;
+      outline: 3px solid #2f9e44;
+      opacity: 0.7;
+    }
+    .card.matched { cursor: default; }
+
+    .win {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: rgba(255, 255, 255, 0.85);
+      border-radius: 10px;
+      font-size: 28px;
+      font-weight: 600;
+    }
+    .win[hidden] { display: none; }
+
+    #test-results {
+      margin-top: 24px;
+      width: 600px;
+      padding: 12px 16px;
+      background: #fff;
+      border-radius: 8px;
+      font-family: Consolas, monospace;
+      white-space: pre-wrap;
+    }
+    #test-results .pass { color: #2f9e44; }
+    #test-results .fail { color: #c92a2a; }
+  </style>
+</head>
+<body>
+  <h1>Super Pamięć</h1>
+
+  <div class="toolbar">
+    <span id="moves">Ruchy: 0</span>
+    <button type="button" class="action" id="new-game">Nowa gra</button>
+  </div>
+
+  <div class="board-wrap">
+    <div class="board" id="board"></div>
+    <div class="win" id="win" hidden>
+      <span id="win-text"></span>
+      <button type="button" class="action" id="play-again">Zagraj ponownie</button>
+    </div>
+  </div>
+
+  <!-- Logika gry: czyste funkcje, bez DOM, window i timerów -->
+  <script>
+    const SYMBOL_POOL = [
+      '🍎', '🍌', '🍇', '🍓', '🍒', '🍍', '🥝', '🍉', '🍋', '🥥',
+      '🐶', '🐱', '🦊', '🐼', '🐸', '🦁', '🐵', '🐧', '🦄', '🐙'
+    ];
+    const PAIRS = 15;
+
+    function shuffle(items, random) {
+      const result = items.slice();
+      for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+      }
+      return result;
+    }
+
+    function createDeck(symbols, random = Math.random) {
+      const doubled = symbols.flatMap(symbol => [symbol, symbol]);
+      return shuffle(doubled, random).map(symbol => ({ symbol, matched: false }));
+    }
+
+    function newGame(random = Math.random) {
+      const symbols = shuffle(SYMBOL_POOL, random).slice(0, PAIRS);
+      return {
+        cards: createDeck(symbols, random),
+        revealed: [],
+        moves: 0,
+        locked: false,
+        won: false
+      };
+    }
+
+    function flipCard(state, index) {
+      const card = state.cards[index];
+      if (state.locked || state.won || !card || card.matched || state.revealed.includes(index)) {
+        return state;
+      }
+
+      const revealed = [...state.revealed, index];
+      if (revealed.length < 2) {
+        return { ...state, revealed };
+      }
+
+      const moves = state.moves + 1;
+      const [first, second] = revealed;
+      if (state.cards[first].symbol !== state.cards[second].symbol) {
+        return { ...state, revealed, moves, locked: true };
+      }
+
+      const cards = state.cards.map((c, i) =>
+        i === first || i === second ? { ...c, matched: true } : c
+      );
+      return {
+        ...state,
+        cards,
+        revealed: [],
+        moves,
+        won: cards.every(c => c.matched)
+      };
+    }
+
+    function hideUnmatched(state) {
+      return { ...state, revealed: [], locked: false };
+    }
+  </script>
+
+  <!-- Widok: rysowanie planszy i obsługa kliknięć -->
+  <script>
+    const HIDE_DELAY_MS = 1000;
+
+    const boardEl = document.getElementById('board');
+    const movesEl = document.getElementById('moves');
+    const winEl = document.getElementById('win');
+    const winTextEl = document.getElementById('win-text');
+
+    let state;
+    let hideTimer = null;
+    let cardEls = [];
+
+    function buildBoard() {
+      boardEl.innerHTML = '';
+      cardEls = state.cards.map((card, index) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'card';
+        el.innerHTML =
+          '<div class="card-inner">' +
+            '<div class="card-face card-back"></div>' +
+            '<div class="card-face card-front"></div>' +
+          '</div>';
+        el.querySelector('.card-front').textContent = card.symbol;
+        el.addEventListener('click', () => onCardClick(index));
+        boardEl.appendChild(el);
+        return el;
+      });
+    }
+
+    function render() {
+      state.cards.forEach((card, index) => {
+        const el = cardEls[index];
+        el.classList.toggle('matched', card.matched);
+        el.classList.toggle('revealed', state.revealed.includes(index));
+      });
+      movesEl.textContent = `Ruchy: ${state.moves}`;
+      winTextEl.textContent = `Brawo! Ukończono w ${state.moves} ruchach`;
+      winEl.hidden = !state.won;
+    }
+
+    function onCardClick(index) {
+      const next = flipCard(state, index);
+      if (next === state) return;
+      state = next;
+      render();
+
+      if (state.locked) {
+        hideTimer = setTimeout(() => {
+          hideTimer = null;
+          state = hideUnmatched(state);
+          render();
+        }, HIDE_DELAY_MS);
+      }
+    }
+
+    function startGame() {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+      state = newGame();
+      buildBoard();
+      render();
+    }
+
+    document.getElementById('new-game').addEventListener('click', startGame);
+    document.getElementById('play-again').addEventListener('click', startGame);
+
+    startGame();
+  </script>
+
+  <!-- Testy: uruchamiane tylko z parametrem ?test -->
+  <script>
+    if (new URLSearchParams(location.search).has('test')) {
+      runTests();
+    }
+
+    function runTests() {
+      // Deterministyczny generator (LCG) do powtarzalnych tasowań
+      function seeded(seed) {
+        let s = seed;
+        return () => {
+          s = (s * 1664525 + 1013904223) % 4294967296;
+          return s / 4294967296;
+        };
+      }
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message);
+      }
+
+      const symbols = SYMBOL_POOL.slice(0, PAIRS);
+
+      // Stan z talią ułożoną parami: indeksy 0/1 to para, 2/3 to para itd.
+      function orderedState() {
+        return {
+          cards: symbols.flatMap(s => [{ symbol: s, matched: false }, { symbol: s, matched: false }]),
+          revealed: [],
+          moves: 0,
+          locked: false,
+          won: false
+        };
+      }
+
+      const tests = [
+        ['Talia ma 30 kart, każdy z 15 symboli dokładnie dwa razy', () => {
+          const deck = createDeck(symbols, seeded(1));
+          assert(deck.length === 30, `oczekiwano 30 kart, jest ${deck.length}`);
+          symbols.forEach(s => {
+            const count = deck.filter(c => c.symbol === s).length;
+            assert(count === 2, `symbol ${s} występuje ${count} razy`);
+          });
+          assert(deck.every(c => c.matched === false), 'karty nie powinny być znalezione');
+        }],
+
+        ['Ta sama funkcja losująca daje to samo ułożenie, tasowanie zmienia kolejność', () => {
+          const a = createDeck(symbols, seeded(42)).map(c => c.symbol).join();
+          const b = createDeck(symbols, seeded(42)).map(c => c.symbol).join();
+          const unshuffled = symbols.flatMap(s => [s, s]).join();
+          assert(a === b, 'ułożenia różnią się mimo tego samego ziarna');
+          assert(a !== unshuffled, 'talia nie została przetasowana');
+        }],
+
+        ['newGame zwraca stan początkowy z 15 różnymi symbolami', () => {
+          const s = newGame(seeded(7));
+          assert(s.cards.length === 30, 'talia powinna mieć 30 kart');
+          assert(new Set(s.cards.map(c => c.symbol)).size === 15, 'powinno być 15 różnych symboli');
+          assert(s.moves === 0 && !s.locked && !s.won && s.revealed.length === 0, 'zły stan początkowy');
+        }],
+
+        ['Odkrycie pierwszej karty: karta w revealed, moves bez zmian', () => {
+          const s = flipCard(orderedState(), 0);
+          assert(s.revealed.length === 1 && s.revealed[0] === 0, 'karta 0 powinna być w revealed');
+          assert(s.moves === 0, `moves = ${s.moves}`);
+        }],
+
+        ['Odkrycie pary: obie matched, revealed puste, moves = 1', () => {
+          const s = flipCard(flipCard(orderedState(), 0), 1);
+          assert(s.cards[0].matched && s.cards[1].matched, 'para nie jest oznaczona');
+          assert(s.revealed.length === 0, 'revealed nie jest puste');
+          assert(s.moves === 1, `moves = ${s.moves}`);
+          assert(!s.locked, 'plansza nie powinna być zablokowana');
+        }],
+
+        ['Odkrycie dwóch różnych kart: locked, moves = 1', () => {
+          const s = flipCard(flipCard(orderedState(), 0), 2);
+          assert(s.locked === true, 'plansza powinna być zablokowana');
+          assert(s.moves === 1, `moves = ${s.moves}`);
+          assert(s.revealed.length === 2, 'obie karty powinny pozostać odkryte');
+        }],
+
+        ['Kliknięcie w czasie blokady nie zmienia stanu', () => {
+          const locked = flipCard(flipCard(orderedState(), 0), 2);
+          assert(flipCard(locked, 4) === locked, 'stan zmienił się podczas blokady');
+        }],
+
+        ['Ponowne kliknięcie odkrytej karty nie zmienia stanu i nie liczy ruchu', () => {
+          const one = flipCard(orderedState(), 0);
+          const again = flipCard(one, 0);
+          assert(again === one, 'stan zmienił się');
+          assert(again.moves === 0, 'naliczono ruch');
+        }],
+
+        ['Kliknięcie znalezionej karty nie zmienia stanu', () => {
+          const s = flipCard(flipCard(orderedState(), 0), 1);
+          assert(flipCard(s, 0) === s, 'stan zmienił się');
+        }],
+
+        ['hideUnmatched zakrywa obie karty i zdejmuje blokadę', () => {
+          const s = hideUnmatched(flipCard(flipCard(orderedState(), 0), 2));
+          assert(s.revealed.length === 0, 'karty nadal odkryte');
+          assert(s.locked === false, 'blokada nie została zdjęta');
+          assert(s.moves === 1, 'hideUnmatched nie powinno zmieniać moves');
+        }],
+
+        ['Znalezienie wszystkich 15 par ustawia won', () => {
+          let s = orderedState();
+          for (let i = 0; i < 30; i += 2) {
+            assert(!s.won, `won ustawione przedwcześnie przy parze ${i / 2}`);
+            s = flipCard(flipCard(s, i), i + 1);
+          }
+          assert(s.won === true, 'won powinno być true');
+          assert(s.moves === 15, `moves = ${s.moves}`);
+          assert(flipCard(s, 0) === s, 'po wygranej kliknięcia powinny być ignorowane');
+        }],
+
+        ['flipCard nie modyfikuje przekazanego stanu', () => {
+          const cases = [
+            [orderedState(), 0],
+            [flipCard(orderedState(), 0), 1],
+            [flipCard(orderedState(), 0), 2]
+          ];
+          cases.forEach(([input, index]) => {
+            const snapshot = JSON.stringify(input);
+            flipCard(input, index);
+            assert(JSON.stringify(input) === snapshot, `stan wejściowy zmieniony (karta ${index})`);
+          });
+        }]
+      ];
+
+      const results = tests.map(([name, fn]) => {
+        try {
+          fn();
+          return { name, ok: true };
+        } catch (e) {
+          return { name, ok: false, error: e.message };
+        }
+      });
+
+      const passed = results.filter(r => r.ok).length;
+      const failed = results.length - passed;
+
+      const box = document.createElement('div');
+      box.id = 'test-results';
+      const header = document.createElement('strong');
+      header.textContent = `Testy: ${passed} zaliczonych, ${failed} niezaliczonych\n\n`;
+      box.appendChild(header);
+
+      console.log(`Testy: ${passed} zaliczonych, ${failed} niezaliczonych`);
+      results.forEach(r => {
+        const line = document.createElement('div');
+        line.className = r.ok ? 'pass' : 'fail';
+        line.textContent = r.ok ? `✔ ${r.name}` : `✘ ${r.name}: ${r.error}`;
+        box.appendChild(line);
+        if (r.ok) console.log(`✔ ${r.name}`);
+        else console.error(`✘ ${r.name}: ${r.error}`);
+      });
+
+      document.body.appendChild(box);
+    }
+  </script>
+</body>
+</html>
