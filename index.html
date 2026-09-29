@@ -2,135 +2,395 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Super Pamięć</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Grandstander:wght@500;700;800&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --sky: #d7e9ec;
+      --sky-deep: #b9d5db;
+      --felt: #2f7f77;
+      --felt-deep: #1f5e58;
+      --plum: #47215f;
+      --plum-soft: #6b4a82;
+      --marigold: #f4b63f;
+      --marigold-deep: #c98a17;
+      --paper: #fffdf7;
+      --cardboard: #cdb88f;
+      --cardboard-dark: #a38c5c;
+
+      /* Kafelek dopasowuje się do okna, ale nie rośnie ponad 92 px */
+      --tile: min(92px, calc((100vw - 120px) / 6.9), calc((100vh - 230px) / 5.5));
+      --gap: calc(var(--tile) * 0.15);
+      --pad: calc(var(--tile) * 0.32);
+      --board-w: calc(var(--tile) * 6 + var(--gap) * 5);
+      --tray-w: calc(var(--board-w) + var(--pad) * 2);
+      --thick: 10px;
+      --half: 5px;
+      --flip: 320ms;
+    }
+
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      font-family: "Segoe UI", system-ui, sans-serif;
-      background: #eef1f6;
-      color: #222;
+      min-height: 100vh;
+      font-family: "Grandstander", "Trebuchet MS", system-ui, sans-serif;
+      color: var(--plum);
+      background: radial-gradient(120% 90% at 50% 0%, #eaf4f5 0%, var(--sky) 50%, var(--sky-deep) 100%);
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 24px;
+      padding: 28px 16px 48px;
     }
 
-    h1 { margin: 0 0 16px; }
-
-    .toolbar {
-      width: 600px;
+    .top {
+      width: var(--tray-w);
+      max-width: 100%;
       display: flex;
       justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 46px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.01em;
+    }
+
+    .hint {
+      margin: 8px 0 0;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--plum-soft);
+    }
+
+    .toolbar {
+      display: flex;
       align-items: center;
-      margin-bottom: 16px;
+      gap: 20px;
+    }
+
+    #moves {
       font-size: 20px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
     }
 
     button.action {
       font: inherit;
-      font-size: 16px;
-      padding: 8px 16px;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--plum);
+      padding: 12px 20px 9px;
       border: none;
-      border-radius: 6px;
-      background: #3b5bdb;
-      color: #fff;
+      border-radius: 12px;
+      background: var(--marigold);
       cursor: pointer;
+      box-shadow: 0 5px 0 var(--marigold-deep), 0 12px 18px -8px rgba(71, 33, 95, 0.45);
+      transition: transform 90ms ease-out, box-shadow 90ms ease-out, background-color 120ms;
     }
-    button.action:hover { background: #2f4ac0; }
+    button.action:hover { background: #f7c35c; }
+    button.action:active {
+      transform: translateY(4px);
+      box-shadow: 0 1px 0 var(--marigold-deep), 0 4px 8px -4px rgba(71, 33, 95, 0.45);
+    }
+    button.action:focus-visible {
+      outline: 3px solid var(--plum);
+      outline-offset: 3px;
+    }
 
-    .board-wrap { position: relative; }
+    /* Scena 3D: jedna perspektywa dla tacy i wszystkich kafelków */
+    .scene {
+      position: relative;
+      margin-top: 18px;
+      perspective: 1500px;
+      perspective-origin: 50% 35%;
+    }
+
+    .tray {
+      --tilt-x: 0deg;
+      --tilt-y: 0deg;
+      position: relative;
+      padding: var(--pad);
+      border-radius: 18px 18px 8px 8px;
+      background:
+        radial-gradient(circle at 30% 15%, rgba(255, 255, 255, 0.12), transparent 60%),
+        repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 2px, transparent 2px 5px),
+        var(--felt);
+      box-shadow:
+        inset 0 0 0 2px rgba(255, 255, 255, 0.1),
+        inset 0 14px 28px rgba(0, 0, 0, 0.28),
+        0 70px 50px -45px rgba(20, 60, 56, 0.65);
+      transform-style: preserve-3d;
+      transform: rotateX(calc(24deg + var(--tilt-y))) rotateY(var(--tilt-x));
+      transition: transform 500ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    }
+
+    /* Przednia ścianka tacy, widoczna dzięki pochyleniu */
+    .tray::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      top: 100%;
+      height: 36px;
+      background: linear-gradient(var(--felt-deep), #163f3b);
+      transform-origin: top;
+      transform: rotateX(-90deg);
+    }
 
     .board {
       display: grid;
-      grid-template-columns: repeat(6, 90px);
-      grid-template-rows: repeat(5, 90px);
-      gap: 12px;
+      grid-template-columns: repeat(6, var(--tile));
+      grid-template-rows: repeat(5, var(--tile));
+      gap: var(--gap);
+      transform-style: preserve-3d;
     }
 
     .card {
+      position: relative;
       padding: 0;
       border: none;
       background: none;
+      font: inherit;
       cursor: pointer;
-      perspective: 600px;
+      transform-style: preserve-3d;
+    }
+    .card:focus-visible {
+      outline: 3px solid var(--marigold);
+      outline-offset: 5px;
+      border-radius: 10px;
+    }
+    .card.matched,
+    .card.revealed { cursor: default; }
+    .board.locked .card { cursor: wait; }
+
+    /* Cień kafelka leży na filcu i zostaje na miejscu, gdy kafelek się unosi */
+    .shadow {
+      position: absolute;
+      inset: 8% 5% 0;
+      border-radius: 10px;
+      background: rgba(10, 44, 40, 0.55);
+      filter: blur(5px);
+      transform: translate3d(0, 3px, 0);
+      transition: transform 180ms ease-out, opacity 180ms ease-out;
+      animation: shadow-deal 520ms ease-out backwards;
+      animation-delay: calc(var(--i) * 22ms);
+    }
+
+    .card-float {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+      transform: translate3d(0, 0, var(--half)) rotateZ(0deg);
+      transition: transform 180ms ease-out;
+      animation: deal 520ms cubic-bezier(0.2, 0.8, 0.3, 1.1) backwards;
+      animation-delay: calc(var(--i) * 22ms);
     }
 
     .card-inner {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      transition: transform 0.3s;
-      transform-style: preserve-3d;
-    }
-    .card.revealed .card-inner,
-    .card.matched .card-inner { transform: rotateY(180deg); }
-
-    .card-face {
       position: absolute;
       inset: 0;
-      border-radius: 10px;
+      transform-style: preserve-3d;
+      transform: translateZ(0) rotateY(0deg);
+    }
+    .card.revealed .card-inner,
+    .card.matched .card-inner { transform: translateZ(0) rotateY(180deg); }
+
+    .card.animate .card-inner { animation: flip-close var(--flip) ease-in-out; }
+    .card.animate.revealed .card-inner,
+    .card.animate.matched .card-inner { animation: flip-open var(--flip) ease-in-out; }
+
+    .card.animate .shadow { animation: shadow-close var(--flip) ease-in-out; }
+    .card.animate.revealed .shadow,
+    .card.animate.matched .shadow { animation: shadow-open var(--flip) ease-in-out; }
+
+    .card.animate.matched .card-float { animation: settle 420ms ease-out var(--flip) backwards; }
+
+    .board:not(.locked) .card:not(.revealed):not(.matched):hover .card-float,
+    .card:not(.revealed):not(.matched):focus-visible .card-float {
+      transform: translate3d(0, 0, 14px) rotateZ(0deg);
+    }
+    .board:not(.locked) .card:not(.revealed):not(.matched):hover .shadow,
+    .card:not(.revealed):not(.matched):focus-visible .shadow {
+      transform: translate3d(0, 9px, 0) scale(1.05);
+      opacity: 0.6;
+    }
+
+    .face {
+      position: absolute;
+      inset: 0;
+      border-radius: 9px;
+      -webkit-backface-visibility: hidden;
       backface-visibility: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 44px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
     }
-    .card-back { background: #3b5bdb; }
-    .card-front {
-      background: #fff;
-      transform: rotateY(180deg);
+
+    .back {
+      transform: translateZ(var(--half));
+      background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.16), transparent 45%),
+        radial-gradient(circle, var(--marigold) 0 1.6px, transparent 2.2px) 0 0 / 11px 11px,
+        var(--plum);
+      box-shadow: inset 0 0 0 6px var(--plum), inset 0 0 0 8px var(--marigold);
     }
-    .card.matched .card-front {
-      background: #d3f9d8;
-      outline: 3px solid #2f9e44;
-      opacity: 0.7;
+
+    .front {
+      transform: rotateY(180deg) translateZ(var(--half));
+      background: linear-gradient(160deg, #ffffff, var(--paper) 60%, #f3eee2);
+      box-shadow: inset 0 0 0 1px rgba(71, 33, 95, 0.1);
+      font-size: calc(var(--tile) * 0.5);
+      line-height: 1;
+      transition: background-color 200ms, box-shadow 200ms;
     }
-    .card.matched { cursor: default; }
+    .card.matched .front {
+      background: #fff1cc;
+      box-shadow: inset 0 0 0 3px var(--marigold), inset 0 0 18px rgba(244, 182, 63, 0.45);
+    }
+
+    /* Cztery krawędzie z tektury nadają kafelkowi grubość */
+    .edge {
+      position: absolute;
+      background: var(--cardboard);
+    }
+    .edge-t,
+    .edge-b {
+      left: 8px;
+      right: 8px;
+      height: var(--thick);
+      transform: rotateX(90deg);
+    }
+    .edge-t { top: calc(var(--half) * -1); background: #ddcba6; }
+    .edge-b { top: calc(100% - var(--half)); background: var(--cardboard-dark); }
+    .edge-l,
+    .edge-r {
+      top: 8px;
+      bottom: 8px;
+      width: var(--thick);
+      transform: rotateY(90deg);
+    }
+    .edge-l { left: calc(var(--half) * -1); }
+    .edge-r { left: calc(100% - var(--half)); }
+
+    @keyframes flip-open {
+      0%   { transform: translateZ(0) rotateY(0deg); }
+      50%  { transform: translateZ(48px) rotateY(90deg); }
+      100% { transform: translateZ(0) rotateY(180deg); }
+    }
+    @keyframes flip-close {
+      0%   { transform: translateZ(0) rotateY(180deg); }
+      50%  { transform: translateZ(48px) rotateY(90deg); }
+      100% { transform: translateZ(0) rotateY(0deg); }
+    }
+    @keyframes shadow-open {
+      50% { transform: translate3d(0, 16px, 0) scale(1.12); opacity: 0.35; }
+    }
+    @keyframes shadow-close {
+      50% { transform: translate3d(0, 16px, 0) scale(1.12); opacity: 0.35; }
+    }
+    @keyframes settle {
+      0%   { transform: translate3d(0, 0, var(--half)) rotateZ(0deg); }
+      40%  { transform: translate3d(0, 0, 22px) rotateZ(0deg); }
+      100% { transform: translate3d(0, 0, var(--half)) rotateZ(0deg); }
+    }
+    @keyframes deal {
+      0%   { transform: translate3d(0, calc(var(--tile) * -0.5), 240px) rotateZ(var(--r)); }
+      70%  { transform: translate3d(0, 0, 10px) rotateZ(0deg); }
+      100% { transform: translate3d(0, 0, var(--half)) rotateZ(0deg); }
+    }
+    @keyframes shadow-deal {
+      0%  { opacity: 0; }
+      60% { opacity: 0.2; }
+    }
 
     .win {
       position: absolute;
       inset: 0;
+      z-index: 5;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 16px;
-      background: rgba(255, 255, 255, 0.85);
-      border-radius: 10px;
-      font-size: 28px;
-      font-weight: 600;
     }
     .win[hidden] { display: none; }
 
+    .win-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 30px 40px 34px;
+      border-radius: 18px;
+      background: var(--paper);
+      text-align: center;
+      box-shadow: 0 8px 0 var(--cardboard), 0 34px 50px -12px rgba(23, 60, 64, 0.5);
+      animation: pop 460ms cubic-bezier(0.2, 0.9, 0.3, 1.3);
+    }
+
+    #win-text {
+      font-size: 30px;
+      font-weight: 800;
+      line-height: 1.15;
+      text-wrap: balance;
+    }
+
+    @keyframes pop {
+      from { transform: translateY(40px) scale(0.85); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tray { transition: none; }
+      .card-float,
+      .card-inner,
+      .shadow,
+      .win-panel { animation: none !important; }
+      .card-inner { transition: transform var(--flip) ease-in-out; }
+    }
+
     #test-results {
-      margin-top: 24px;
-      width: 600px;
-      padding: 12px 16px;
-      background: #fff;
-      border-radius: 8px;
+      margin-top: 40px;
+      width: var(--tray-w);
+      max-width: 100%;
+      padding: 14px 18px;
+      background: var(--paper);
+      border-radius: 12px;
       font-family: Consolas, monospace;
       white-space: pre-wrap;
+      box-shadow: 0 4px 0 var(--cardboard);
     }
-    #test-results .pass { color: #2f9e44; }
-    #test-results .fail { color: #c92a2a; }
+    #test-results .pass { color: #2b7a3b; }
+    #test-results .fail { color: #b3261e; }
   </style>
 </head>
 <body>
-  <h1>Super Pamięć</h1>
+  <header class="top">
+    <div>
+      <h1>Super Pamięć</h1>
+      <p class="hint">Odkrywaj po dwie karty i znajdź wszystkie 15 par.</p>
+    </div>
+    <div class="toolbar">
+      <span id="moves">Ruchy: 0</span>
+      <button type="button" class="action" id="new-game">Nowa gra</button>
+    </div>
+  </header>
 
-  <div class="toolbar">
-    <span id="moves">Ruchy: 0</span>
-    <button type="button" class="action" id="new-game">Nowa gra</button>
-  </div>
-
-  <div class="board-wrap">
-    <div class="board" id="board"></div>
+  <div class="scene" id="scene">
+    <div class="tray" id="tray">
+      <div class="board" id="board"></div>
+    </div>
     <div class="win" id="win" hidden>
-      <span id="win-text"></span>
-      <button type="button" class="action" id="play-again">Zagraj ponownie</button>
+      <div class="win-panel">
+        <span id="win-text"></span>
+        <button type="button" class="action" id="play-again">Zagraj ponownie</button>
+      </div>
     </div>
   </div>
 
@@ -204,11 +464,15 @@
   <!-- Widok: rysowanie planszy i obsługa kliknięć -->
   <script>
     const HIDE_DELAY_MS = 1000;
+    const MAX_TILT_DEG = 5;
 
+    const sceneEl = document.getElementById('scene');
+    const trayEl = document.getElementById('tray');
     const boardEl = document.getElementById('board');
     const movesEl = document.getElementById('moves');
     const winEl = document.getElementById('win');
     const winTextEl = document.getElementById('win-text');
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     let state;
     let hideTimer = null;
@@ -220,12 +484,22 @@
         const el = document.createElement('button');
         el.type = 'button';
         el.className = 'card';
+        // Kolejność opadania przy rozdaniu i lekki skręt każdej karty w locie
+        el.style.setProperty('--i', index);
+        el.style.setProperty('--r', `${(index * 37) % 13 - 6}deg`);
         el.innerHTML =
-          '<div class="card-inner">' +
-            '<div class="card-face card-back"></div>' +
-            '<div class="card-face card-front"></div>' +
-          '</div>';
-        el.querySelector('.card-front').textContent = card.symbol;
+          '<span class="shadow"></span>' +
+          '<span class="card-float">' +
+            '<span class="card-inner">' +
+              '<span class="edge edge-t"></span>' +
+              '<span class="edge edge-b"></span>' +
+              '<span class="edge edge-l"></span>' +
+              '<span class="edge edge-r"></span>' +
+              '<span class="face back"></span>' +
+              '<span class="face front"></span>' +
+            '</span>' +
+          '</span>';
+        el.querySelector('.front').textContent = card.symbol;
         el.addEventListener('click', () => onCardClick(index));
         boardEl.appendChild(el);
         return el;
@@ -235,9 +509,18 @@
     function render() {
       state.cards.forEach((card, index) => {
         const el = cardEls[index];
+        const revealed = state.revealed.includes(index);
+        // Animacja obrotu dopiero po pierwszej zmianie, żeby rozdanie nie podskakiwało
+        if (el.classList.contains('matched') !== card.matched ||
+            el.classList.contains('revealed') !== revealed) {
+          el.classList.add('animate');
+        }
         el.classList.toggle('matched', card.matched);
-        el.classList.toggle('revealed', state.revealed.includes(index));
+        el.classList.toggle('revealed', revealed);
+        el.setAttribute('aria-label',
+          card.matched ? `${card.symbol}, para znaleziona` : revealed ? card.symbol : 'Zakryta karta');
       });
+      boardEl.classList.toggle('locked', state.locked);
       movesEl.textContent = `Ruchy: ${state.moves}`;
       winTextEl.textContent = `Brawo! Ukończono w ${state.moves} ruchach`;
       winEl.hidden = !state.won;
@@ -266,6 +549,23 @@
       render();
     }
 
+    // Taca wychyla się lekko za kursorem
+    function tiltTray(event) {
+      if (reducedMotion.matches) return;
+      const box = sceneEl.getBoundingClientRect();
+      const x = (event.clientX - box.left) / box.width - 0.5;
+      const y = (event.clientY - box.top) / box.height - 0.5;
+      trayEl.style.setProperty('--tilt-x', `${(x * MAX_TILT_DEG).toFixed(2)}deg`);
+      trayEl.style.setProperty('--tilt-y', `${(-y * MAX_TILT_DEG * 0.7).toFixed(2)}deg`);
+    }
+
+    function resetTilt() {
+      trayEl.style.setProperty('--tilt-x', '0deg');
+      trayEl.style.setProperty('--tilt-y', '0deg');
+    }
+
+    sceneEl.addEventListener('pointermove', tiltTray);
+    sceneEl.addEventListener('pointerleave', resetTilt);
     document.getElementById('new-game').addEventListener('click', startGame);
     document.getElementById('play-again').addEventListener('click', startGame);
 
